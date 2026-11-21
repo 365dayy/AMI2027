@@ -102,8 +102,9 @@ const modeText={local:'資料目前只存在這個瀏覽器。',shared:'資料�
 const setMode=m=>{$('mode').textContent=modeText[m];};
 try{const l=JSON.parse(localStorage.getItem(CFG.key)||'null');if(l&&l.d&&l.x){st=l;st.rl=st.rl||{};}}catch(e){}
 function save(){
+  // 唯讀者不儲存本機或雲端，避免本機資料混淆正式版本
+  if(!canW || !dbref) return;
   try{localStorage.setItem(CFG.key,JSON.stringify(st));}catch(e){}
-  if(!dbref||!canW)return;
   clearTimeout(saveT);
   saveT=setTimeout(async()=>{try{await dbref.set({state:JSON.stringify(st),updatedAt:firebase.firestore.FieldValue.serverTimestamp()});setMode('shared');say('已同步儲存。');}catch(e){say('雲端儲存失敗：'+e.message);}},400);
 }
@@ -195,32 +196,30 @@ $('bd').onclick=()=>{if(!armD){armD=true;draw();setTimeout(()=>{armD=false;draw(
 $('bk').onclick=()=>{if(!armK){armK=true;draw();setTimeout(()=>{armK=false;draw();},4000);return;}armK=false;st.x={};save();draw();say('已清除所有勾選。');};
 setMode('local');draw();
 const authStatus=$('authstatus'), loginBtn=$('loginbtn'), logoutBtn=$('logoutbtn');
-let auth=null, cloudReady=false;
+let auth=null, cloudReady=false, db=null;
 function allowed(email){return AUTHORIZED_EMAILS.some(x=>x&& !x.startsWith('請填入') && x.trim().toLowerCase()===String(email||'').trim().toLowerCase());}
 function setAuthUI(user){
-  if(user){authStatus.textContent='登入帳號：'+user.email+(canW?'（可編輯及同步）':'（未授權，唯讀）');loginBtn.style.display='none';logoutBtn.style.display='';}
-  else{authStatus.textContent='尚未登入 Google。登入後才能啟用雲端同步。';loginBtn.style.display='';logoutBtn.style.display='none';}
+  if(user){authStatus.textContent='登入帳號：'+user.email+(canW?'（可編輯及同步）':'（唯讀檢視）');loginBtn.style.display='none';logoutBtn.style.display='';}
+  else{authStatus.textContent='公開檢視模式：未登入（唯讀，可查看最新雲端資料）';loginBtn.style.display='';logoutBtn.style.display='none';}
 }
 try{
   if(firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('請填入') && firebaseConfig.appId && !firebaseConfig.appId.startsWith('請填入')){
-    firebase.initializeApp(firebaseConfig);auth=firebase.auth();
-    const db=firebase.firestore();
+    firebase.initializeApp(firebaseConfig);auth=firebase.auth();db=firebase.firestore();
     loginBtn.onclick=async()=>{try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());}catch(e){authStatus.textContent='登入失敗：'+e.message;}};
-    logoutBtn.onclick=async()=>{await auth.signOut();};
-    auth.onAuthStateChanged(async user=>{
-      dbref=null;canW=false;cloudReady=false;setAuthUI(user);
-      if(!user){edit=false;setMode('local');draw();return;}
-      if(!allowed(user.email)){authStatus.textContent='帳號 '+user.email+' 尚未列入程式授權清單。';setMode('denied');draw();return;}
-canW=true;
-setAuthUI(user);
-dbref=db.doc('plan/main');
-cloudReady=true;
-      dbref.onSnapshot(s=>{
-        if(s.exists){try{const o=JSON.parse(s.data().state);if(o&&o.d&&o.x){st=o;st.rl=st.rl||{};try{localStorage.setItem(CFG.key,JSON.stringify(st));}catch(e){}draw();}}catch(e){}
-        }else{dbref.set({state:JSON.stringify(st)}).catch(e=>authStatus.textContent='初始化雲端資料失敗：'+e.message);}
-        setMode('shared');
-      },e=>{authStatus.textContent='雲端讀取失敗：'+e.message;dbref=null;canW=false;setMode('local');draw();});
-      setMode('shared');draw();
+    logoutBtn.onclick=async()=>{try{await auth.signOut();}catch(e){authStatus.textContent='登出失敗：'+e.message;}};
+    dbref=db.doc('plan/main');
+    // 先不論是否登入，所有訪客都監聽公開雲端文件；只有授權者可寫入
+    dbref.onSnapshot(s=>{
+      if(s.exists){try{const o=JSON.parse(s.data().state);if(o&&o.d&&o.x){st=o;st.rl=st.rl||{};draw();}}catch(e){say('雲端資料解析失敗：'+e.message);}}
+      else if(canW){dbref.set({state:JSON.stringify(st),updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>authStatus.textContent='初始化雲端資料失敗：'+e.message);}
+      cloudReady=true;setMode('shared');draw();
+    },e=>{authStatus.textContent='雲端讀取失敗：'+e.message;cloudReady=false;setMode('local');});
+    auth.onAuthStateChanged(user=>{
+      canW=!!(user&&allowed(user.email));
+      if(!canW) edit=false;
+      setAuthUI(user);
+      if(user&&!canW) authStatus.textContent='登入帳號：'+user.email+'（唯讀檢視）';
+      setMode(cloudReady?'shared':'local');draw();
     });
   }else{authStatus.textContent='尚未填妥 Firebase 設定，請先完成設定區。';loginBtn.disabled=true;}
 }catch(e){authStatus.textContent='Firebase 初始化錯誤：'+e.message;loginBtn.disabled=true;}
