@@ -211,7 +211,10 @@ try{
       dbref=null;canW=false;cloudReady=false;setAuthUI(user);
       if(!user){edit=false;setMode('local');draw();return;}
       if(!allowed(user.email)){authStatus.textContent='帳號 '+user.email+' 尚未列入程式授權清單。';setMode('denied');draw();return;}
-      canW=true;dbref=db.doc('plan/main');cloudReady=true;
+canW=true;
+setAuthUI(user);
+dbref=db.doc('plan/main');
+cloudReady=true;
       dbref.onSnapshot(s=>{
         if(s.exists){try{const o=JSON.parse(s.data().state);if(o&&o.d&&o.x){st=o;st.rl=st.rl||{};try{localStorage.setItem(CFG.key,JSON.stringify(st));}catch(e){}draw();}}catch(e){}
         }else{dbref.set({state:JSON.stringify(st)}).catch(e=>authStatus.textContent='初始化雲端資料失敗：'+e.message);}
