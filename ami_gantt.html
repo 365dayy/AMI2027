@@ -51,6 +51,7 @@ h1{font-size:20px;margin:0 0 4px}
 <div class="sub">2026 年 11 月 – 2027 年 6 月　｜　◆ 里程碑　● 例行會議　▬ 期間　｜　紅線＝今天</div>
 <div class="card" id="authbox" style="max-width:1100px;margin:0 auto 12px">
   <div id="authstatus" class="msg">請登入 Google 帳號以啟用雲端同步。</div>
+  <div id="lastupdate" class="msg">最後更新時間：載入中…</div>
   <div class="tb"><button class="btn" id="loginbtn">🔐 Google 登入／同步</button><button class="btn" id="logoutbtn" style="display:none">登出</button></div>
 </div>
 <div class="card"><div class="scroll"><div class="chart" id="chart"></div></div></div>
@@ -195,7 +196,8 @@ $('bc').onclick=()=>{
 $('bd').onclick=()=>{if(!armD){armD=true;draw();setTimeout(()=>{armD=false;draw();},4000);return;}armD=false;st.d={};st.rl={};save();draw();say('已還原為預設日期與預設的會議、訪視次數。');};
 $('bk').onclick=()=>{if(!armK){armK=true;draw();setTimeout(()=>{armK=false;draw();},4000);return;}armK=false;st.x={};save();draw();say('已清除所有勾選。');};
 setMode('local');draw();
-const authStatus=$('authstatus'), loginBtn=$('loginbtn'), logoutBtn=$('logoutbtn');
+const authStatus=$('authstatus'), loginBtn=$('loginbtn'), logoutBtn=$('logoutbtn'), lastUpdate=$('lastupdate');
+function showUpdatedAt(ts){ if(!ts){lastUpdate.textContent='最後更新時間：尚無紀錄';return;} const d=ts.toDate?ts.toDate():new Date(ts); lastUpdate.textContent='最後更新時間：'+d.toLocaleString('zh-TW',{timeZone:'Asia/Taipei',hour12:false}); }
 let auth=null, cloudReady=false, db=null;
 function allowed(email){return AUTHORIZED_EMAILS.some(x=>x&& !x.startsWith('請填入') && x.trim().toLowerCase()===String(email||'').trim().toLowerCase());}
 function setAuthUI(user){
@@ -210,7 +212,7 @@ try{
     dbref=db.doc('plan/main');
     // 先不論是否登入，所有訪客都監聽公開雲端文件；只有授權者可寫入
     dbref.onSnapshot(s=>{
-      if(s.exists){try{const o=JSON.parse(s.data().state);if(o&&o.d&&o.x){st=o;st.rl=st.rl||{};draw();}}catch(e){say('雲端資料解析失敗：'+e.message);}}
+      if(s.exists){try{const data=s.data();showUpdatedAt(data.updatedAt);const o=JSON.parse(data.state);if(o&&o.d&&o.x){st=o;st.rl=st.rl||{};draw();}}catch(e){say('雲端資料解析失敗：'+e.message);}}
       else if(canW){dbref.set({state:JSON.stringify(st),updatedAt:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>authStatus.textContent='初始化雲端資料失敗：'+e.message);}
       cloudReady=true;setMode('shared');draw();
     },e=>{authStatus.textContent='雲端讀取失敗：'+e.message;cloudReady=false;setMode('local');});
